@@ -1,14 +1,15 @@
 from flask import Flask, render_template, jsonify, request
 import requests
-import threading
-import time
 import smtplib
 import ssl
 import os
+import sqlite3
+from apscheduler.schedulers.background import BackgroundScheduler
+from database import init_db, DB_PATH
 
 app = Flask(__name__)
 
-alerts = {}
+init_db()
 
 @app.route('/')
 def index():
@@ -43,7 +44,13 @@ def set_alert():
     except ValueError:
         return jsonify({'message': 'Invalid price format'}), 400
 
-    alerts[crypto_id] = (target_price, email)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO alerts (crypto_id, target_price, email) VALUES (?, ?, ?)",
+              (crypto_id, target_price, email))
+    conn.commit()
+    conn.close()
+
     return jsonify({'message': f'Alert set for {crypto_id} at ${target_price} to be sent to {email}'})
 
 def send_email(receiver_email, subject, message):
@@ -69,26 +76,37 @@ def send_email(receiver_email, subject, message):
         print(f"Error sending email: {e}")
 
 def check_alerts():
-    while True:
-        for crypto_id, (target_price, email) in list(alerts.items()):
-            url = f'https://api.coingecko.com/api/v3/simple/price?ids={crypto_id}&vs_currencies=usd'
-            try:
-                response = requests.get(url)
-                response.raise_for_status()
-                data = response.json()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM alerts")
+    alerts = c.fetchall()
 
-                if crypto_id in data and 'usd' in data[crypto_id]:
-                    current_price = data[crypto_id]['usd']
-                    if current_price >= target_price:
-                        print(f"ALERT: {crypto_id} has reached the target price of ${target_price}. Current price: ${current_price}")
-                        send_email(email, f"Crypto Price Alert: {crypto_id}", f"The price of {crypto_id} has reached your target of ${target_price}. The current price is ${current_price}.")
-                        del alerts[crypto_id]
-            except requests.exceptions.RequestException as e:
-                print(f"Error fetching price for {crypto_id}: {e}")
-        time.sleep(60)
+    if not alerts:
+        conn.close()
+        return
 
-if __name__ == '__main__':
-    alert_thread = threading.Thread(target=check_alerts)
-    alert_thread.daemon = True
-    alert_thread.start()
-    app.run(debug=True)
+    crypto_ids = ",".join(list(set([alert[1] for alert in alerts])))
+    url = f'https://api.coingecko.com/api/v3/simple/price?ids={crypto_ids}&vs_currencies=usd'
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        prices = response.json()
+
+        for alert in alerts:
+            alert_id, crypto_id, target_price, email = alert
+            if crypto_id in prices and 'usd' in prices[crypto_id]:
+                current_price = prices[crypto_id]['usd']
+                if current_price >= target_price:
+                    print(f"ALERT: {crypto_id} has reached the target price of ${target_price}. Current price: ${current_price}")
+                    send_email(email, f"Crypto Price Alert: {crypto_id}", f"The price of {crypto_id} has reached your target of ${target_price}. The current price is ${current_price}.")
+                    c.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+                    conn.commit()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching prices: {e}")
+    finally:
+        conn.close()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=check_alerts, trigger="interval", seconds=60)
+scheduler.start()

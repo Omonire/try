@@ -1,6 +1,7 @@
 # Logs
 flask.log
 *.log
+alerts.db
 
 # Python
 __pycache__/
