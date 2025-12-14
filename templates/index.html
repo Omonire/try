@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Tracker</title>
+</head>
+<body>
+    <h1>Real-Time Crypto Tracker</h1>
+    <div id="alert-form">
+        <h2>Set a Price Alert</h2>
+        <form id="price-alert-form">
+            <select id="crypto-select" name="crypto_id"></select>
+            <input type="number" id="target-price" name="target_price" step="any" placeholder="Target Price (USD)" required>
+            <input type="email" id="email" name="email" placeholder="Your Email" required>
+            <button type="submit">Set Alert</button>
+        </form>
+        <div id="alert-message"></div>
+    </div>
+    <div id="crypto-container"></div>
+
+    <script>
+        const cryptoSelect = document.getElementById('crypto-select');
+
+        async function fetchCryptoData() {
+            const response = await fetch('/api/crypto');
+            const data = await response.json();
+            const container = document.getElementById('crypto-container');
+            container.innerHTML = '';
+
+            // Clear previous options
+            cryptoSelect.innerHTML = '';
+
+            data.forEach(crypto => {
+                // Populate dropdown
+                const option = document.createElement('option');
+                option.value = crypto.id;
+                option.textContent = `${crypto.name} (${crypto.symbol.toUpperCase()})`;
+                cryptoSelect.appendChild(option);
+
+                // Display data
+                const cryptoElement = document.createElement('div');
+                cryptoElement.innerHTML = `
+                    <h2>${crypto.name} (${crypto.symbol.toUpperCase()})</h2>
+                    <p>Price: $${crypto.current_price}</p>
+                    <p>Market Cap: $${crypto.market_cap}</p>
+                `;
+                container.appendChild(cryptoElement);
+            });
+        }
+
+        document.getElementById('price-alert-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const cryptoId = document.getElementById('crypto-select').value;
+            const targetPrice = document.getElementById('target-price').value;
+            const email = document.getElementById('email').value;
+
+            const response = await fetch('/api/set_alert', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ crypto_id: cryptoId, target_price: targetPrice, email: email })
+            });
+
+            const result = await response.json();
+            const alertMessage = document.getElementById('alert-message');
+            alertMessage.textContent = result.message;
+        });
+
+        fetchCryptoData();
+        setInterval(fetchCryptoData, 10000);
+    </script>
+</body>
+</html>
