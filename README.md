@@ -7,7 +7,7 @@ This is a full-stack web application that tracks and displays real-time cryptocu
 -   **Real-Time Price Tracking:** Fetches and displays live cryptocurrency prices and market data.
 -   **Price Alerts:** Users can set price alerts for any of the tracked cryptocurrencies.
 -   **Email Notifications:** When a target price is reached, the application sends an email notification to the user.
--   **Easy Deployment:** Includes a `render.yaml` file for one-click deployment to Render.
+-   **Production Ready:** Can be deployed to any VPS or cloud server using Gunicorn.
 
 ## Project Structure
 
@@ -15,7 +15,6 @@ This is a full-stack web application that tracks and displays real-time cryptocu
 ├── app.py               # Main Flask application file
 ├── database.py          # SQLite database initialization
 ├── requirements.txt     # Python dependencies
-├── render.yaml          # Render deployment configuration
 ├── templates/
 │   └── index.html       # Frontend HTML and JavaScript
 └── static/              # (Optional) For CSS and other static assets
@@ -55,33 +54,33 @@ python app.py
 
 The application will be running at `http://127.0.0.1:5000`.
 
-## Deployment to Render
+## Production Deployment
 
-This project is configured for easy deployment to [Render](https://render.com/).
+This application is designed to be run with a production-grade WSGI server like Gunicorn. Here are the general steps to deploy it on a VPS or cloud server.
 
-**1. Fork the Repository:**
+**1. Set Environment Variables:**
 
-Fork this repository to your own GitHub account.
-
-**2. Create a New Web Service on Render:**
-
--   Go to your Render dashboard and click "New +".
--   Select "Web Service".
--   Connect your GitHub account and select the forked repository.
-
-**3. Configure the Web Service:**
-
-Render will automatically detect the `render.yaml` file and configure the service for you. The application uses a SQLite database for alert storage, which is created automatically on a persistent disk.
-
-**4. Set Environment Variables:**
-
-For the email notification feature to work, you must set the following environment variables in your Render dashboard under the "Environment" section:
+On your server, you need to set the following environment variables. You can do this by exporting them in your shell's startup script (e.g., `~/.bashrc`) or by using a `.env` file that you load before starting the application.
 
 -   `SENDER_EMAIL`: Your email address for sending alerts.
 -   `SENDER_PASSWORD`: Your email password or an app-specific password.
 -   `SMTP_SERVER`: The SMTP server for your email provider (e.g., `smtp.gmail.com`).
 -   `SMTP_PORT`: The SMTP port (e.g., `587`).
 
-**5. Deploy:**
+**2. Run with Gunicorn:**
 
-Click "Create Web Service" to deploy the application. Render will build and start the application automatically. Once the deployment is complete, you can access your live crypto tracker at the URL provided by Render.
+Once your dependencies are installed and environment variables are set, you can start the application with Gunicorn:
+
+```bash
+gunicorn --workers 4 --preload app:app
+```
+
+-   `--workers 4`: This starts 4 worker processes to handle requests. Adjust this number based on your server's CPU cores.
+-   `--preload`: This is important. It ensures the `APScheduler` background task is initialized once in the parent process before the workers are forked. This prevents multiple schedulers from running and sending duplicate alerts.
+
+**3. Best Practices (Recommended):**
+
+For a robust production setup, consider the following:
+
+-   **Process Manager:** Use a process manager like `systemd` or `supervisor` to manage the Gunicorn process. This will ensure your application restarts automatically if it crashes and starts on server boot.
+-   **Reverse Proxy:** Run a web server like Nginx or Apache in front of Gunicorn. Nginx can handle incoming traffic, manage SSL/TLS certificates, and serve static files more efficiently, forwarding only the dynamic requests to your Gunicorn workers.
